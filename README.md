@@ -1,21 +1,21 @@
 <div align="center">
 
-# 🧰 joyvend · Foundry
+# 🧰 mykeep · Foundry
 
 ### A portable, local platform that gives any AI agent new tools — and the backend they run on.
 
 **Status: vision / design.** No code yet — this repo holds the design while the
-[Memory Capsule](https://github.com/lexxx233/JoyVend-memory-capsule) (component #1) ships.
+[Memory Capsule](https://github.com/lexxx233/mykeep-memory-capsule) (component #1) ships.
 
-[joyvend.io](https://joyvend.io) · **Personal · Private · Portable**
+[mykeep.ai](https://mykeep.ai) · **Personal · Private · Portable**
 
 </div>
 
 ---
 
-Foundry is the **"do more"** component of [joyvend](https://joyvend.io) — a portable suite of
+Foundry is the **"do more"** component of [mykeep](https://mykeep.ai) — a portable suite of
 local capabilities that any AI agent can plug into, all living on a USB stick. You bring the
-agent (Claude Code, Cursor, anything with a fetch/shell tool); joyvend hands it foreign powers
+agent (Claude Code, Cursor, anything with a fetch/shell tool); mykeep hands it foreign powers
 it doesn't ship with — local, private, vendor-neutral, no install.
 
 Where the **Memory Capsule** makes an agent *know* you and **SecretVault** lets it *act as*
@@ -49,7 +49,7 @@ you approve it once. Foundry enforces the grant.
 
 ## How an agent uses it
 
-The same shape as the rest of joyvend: a **loopback REST API + a pasted guide** — the
+The same shape as the rest of mykeep: a **loopback REST API + a pasted guide** — the
 zero-install floor that works with any agent that can make an HTTP call.
 
 ```
@@ -60,14 +60,14 @@ POST /v1/tools/{name}   → run a tool; Foundry sandboxes it, brokers its capabi
 
 No client configuration required. For hosts that want native tool-use, Foundry can *also*
 present the same catalog over MCP — but that's an optional accelerator, never a requirement.
-joyvend's rule: **REST + guide is the universal baseline; MCP, hooks, and SDKs are opt-in per
+mykeep's rule: **REST + guide is the universal baseline; MCP, hooks, and SDKs are opt-in per
 host.**
 
 ## Where it fits
 
 Foundry composes with its siblings, all on the same stick, under one password:
 
-- **[Memory Capsule](https://github.com/lexxx233/JoyVend-memory-capsule)** — tools that need to
+- **[Memory Capsule](https://github.com/lexxx233/mykeep-memory-capsule)** — tools that need to
   remember read and write the agent's memory.
 - **SecretVault** — tools that take authenticated actions get scoped, sealed credentials *by
   reference*; the raw key never enters the tool or the agent's context.
@@ -78,12 +78,12 @@ Foundry composes with its siblings, all on the same stick, under one password:
   beside its data; no host install.
 - **Private by default** — everything sealed at rest with the suite's whole-DB AES-256-GCM
   encryption; no cloud round-trips.
-- **The agent reasons, joyvend provides** — Foundry runs tools and infrastructure; it does no
+- **The agent reasons, mykeep provides** — Foundry runs tools and infrastructure; it does no
   LLM reasoning of its own.
 - **Capability-scoped** — tools get exactly the powers you grant, enforced by the sandbox.
 
 ---
 
 <div align="center">
-<sub>A component of <a href="https://joyvend.io">joyvend</a> · Personal · Private · Portable · © 2026 Domu Inc</sub>
+<sub>A component of <a href="https://mykeep.ai">mykeep</a> · Personal · Private · Portable · © 2026 Domu Inc</sub>
 </div>
