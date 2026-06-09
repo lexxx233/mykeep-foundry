@@ -5,7 +5,7 @@
 ### A portable, local platform that gives any AI agent new tools — and the backend they run on.
 
 **Status: vision / design.** No code yet — this repo holds the design while the
-[Memory Capsule](https://github.com/lexxx233/mykeep-memory-capsule) (component #1) ships.
+[Capsule](https://github.com/lexxx233/mykeep-capsule) (component #1) ships.
 
 [mykeep.ai](https://mykeep.ai) · **Personal · Private · Portable**
 
@@ -18,7 +18,7 @@ local capabilities that any AI agent can plug into, all living on a USB stick. Y
 agent (Claude Code, Cursor, anything with a fetch/shell tool); mykeep hands it foreign powers
 it doesn't ship with — local, private, vendor-neutral, no install.
 
-Where the **Memory Capsule** makes an agent *know* you and **SecretVault** lets it *act as*
+Where the **Capsule** makes an agent *know* you and **Vault** lets it *act as*
 you, **Foundry** lets it *do more*: load plug-and-play skills and tools off the stick, and run
 them on a backend that's already on the stick too.
 
@@ -41,10 +41,10 @@ Foundry is one local server that provides two things:
 
 2. **The infrastructure those tools run on.** A small, encrypted, local substrate —
    **database, queue, cache, object storage** — exposed to tools as host functions, reusing
-   the same encrypted SQLite store the Memory Capsule is built on. Tools get persistence, work
+   the same encrypted SQLite store the Capsule is built on. Tools get persistence, work
    queues, and storage without a cloud or a second process.
 
-A tool declares what it needs — network hosts, storage, a credential from SecretVault — and
+A tool declares what it needs — network hosts, storage, a credential from Vault — and
 you approve it once. Foundry enforces the grant.
 
 ## How an agent uses it
@@ -67,9 +67,9 @@ host.**
 
 Foundry composes with its siblings, all on the same stick, under one password:
 
-- **[Memory Capsule](https://github.com/lexxx233/mykeep-memory-capsule)** — tools that need to
+- **[Capsule](https://github.com/lexxx233/mykeep-capsule)** — tools that need to
   remember read and write the agent's memory.
-- **SecretVault** — tools that take authenticated actions get scoped, sealed credentials *by
+- **Vault** — tools that take authenticated actions get scoped, sealed credentials *by
   reference*; the raw key never enters the tool or the agent's context.
 
 ## Design principles
