@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foundry</title>
+<style>
+  /* Clean-technical theme — system fonts only, renders identically offline. */
+  :root{
+    --bg:#0a0a0b; --panel:#121214; --panel-2:#161619;
+    --line:rgba(255,255,255,.09); --line-2:rgba(255,255,255,.16);
+    --text:#ededf0; --muted:#9a9aa4; --faint:#6b6b75;
+    --accent:#5e9eff; --accent-soft:rgba(94,158,255,.14); --accent-line:rgba(94,158,255,.4);
+    --ship:#46c266; --warn:#e0b341; --warn-soft:rgba(224,179,65,.12); --bad:#ff7a6b;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font:15px/1.55 var(--sans);
+    display:flex;justify-content:center;-webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:radial-gradient(80% 50% at 50% -10%,rgba(94,158,255,.07),transparent 70%)}
+  ::selection{background:var(--accent-soft)}
+  .wrap{width:100%;max-width:820px;padding:36px 20px 80px}
+  h1{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-weight:600;font-size:18px;margin:0}
+  h1 .sq{width:24px;height:24px;border-radius:7px;border:1px solid var(--accent-line);background:var(--accent-soft);display:grid;place-items:center;font-size:.8rem}
+  h2{font-family:var(--mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:500;margin:0 0 14px}
+  .sub{color:var(--faint);font-size:13px;margin:7px 0 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:18px}
+  label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px}
+  input,textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:10px 12px;font:14px var(--sans)}
+  textarea{resize:vertical;min-height:80px;font-family:var(--mono);font-size:12.5px}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent-line)}
+  input::placeholder,textarea::placeholder{color:var(--faint)}
+  .row{display:flex;gap:11px;align-items:center}
+  button{font-family:var(--sans);font-size:13px;font-weight:550;background:var(--accent);color:#06121f;border:1px solid var(--accent);border-radius:8px;padding:10px 16px;cursor:pointer;transition:.16s ease}
+  button:hover{filter:brightness(1.06);transform:translateY(-1px)}
+  button.ghost{background:var(--panel);color:var(--text);border:1px solid var(--line-2)}
+  button.tiny{padding:5px 10px;font-size:11px;border-radius:6px}
+  button.danger{background:var(--panel);border:1px solid rgba(255,122,107,.5);color:var(--bad)}
+  .topbar{display:flex;justify-content:space-between;align-items:center}
+  .pill{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line);background:var(--panel);padding:5px 11px;border-radius:999px;display:inline-flex;gap:7px;align-items:center}
+  .pill .d{width:6px;height:6px;border-radius:50%;background:var(--ship)}
+  .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
+  .ok{color:var(--ship)}
+  .muted{color:var(--muted)} .hide{display:none}
+  .tool{border-top:1px solid var(--line);padding:12px 0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .tool:first-child{border-top:0}
+  .tool .meta{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px}
+  .badge{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .badge.dev{color:var(--warn);border-color:var(--warn-soft);background:var(--warn-soft)}
+  .badge.mkt{color:var(--ship);border-color:rgba(70,194,102,.25)}
+  .badge.granted{color:var(--accent);border-color:var(--accent-line)}
+  pre.snip{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px;font:12px/1.6 var(--mono);margin:0;color:var(--muted)}
+  .warnbox{background:var(--warn-soft);border:1px solid rgba(224,179,65,.32);color:#e7c878;font-size:12.5px;padding:.55rem .7rem;border-radius:8px;margin:.6rem 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div><h1><span class="sq">🧰</span>Foundry</h1><p class="sub" id="tagline">a sandboxed tool host for your agent</p></div>
+    <button class="ghost hide" id="lockBtn" onclick="lock()">Lock</button>
+  </div>
+
+  <!-- LOCK -->
+  <div class="card" id="lockCard">
+    <h2 id="lockTitle">Unlock</h2>
+    <p class="sub" id="lockHint">Enter your password.</p>
+    <input type="password" id="pw" placeholder="Password" autofocus onkeydown="if(event.key==='Enter')doUnlock()">
+    <p class="warnbox hide" id="firstWarn">First launch — this password seals every tool and its data on the stick. <b>No recovery</b> if lost.</p>
+    <div class="row" style="margin-top:12px"><button id="unlockBtn" onclick="doUnlock()">Unlock</button><span class="muted" id="busy"></span></div>
+    <div class="err" id="lockErr"></div>
+  </div>
+
+  <!-- DASH -->
+  <div id="dash" class="hide">
+    <div class="card">
+      <h2>Connect your agent</h2>
+      <p class="sub" style="margin-bottom:10px">Paste into Claude Code, Cursor, or any agent with an HTTP tool. It can run granted tools, never install or author them.</p>
+      <pre class="snip" id="snip">…</pre>
+    </div>
+
+    <div class="card">
+      <div class="topbar"><h2>Installed tools</h2><button class="ghost tiny" onclick="loadTools()">↻</button></div>
+      <div id="tools"><div class="muted" style="padding:10px 0">—</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Author a tool (dev)</h2>
+      <p class="warnbox">Dev tools are <b>unsigned</b> and were not reviewed. They run only here, with your consent, and are never exposed to the agent.</p>
+      <label>Name</label><input id="dName" placeholder="my-tool">
+      <label>Allowed hosts (comma-separated, optional)</label><input id="dHosts" placeholder="api.example.com">
+      <label>Source — <span class="muted">async function run(input){ … }</span></label>
+      <textarea id="dSrc" placeholder="async function run(input){ return 'hello ' + input.name; }"></textarea>
+      <div class="row" style="margin-top:10px"><button onclick="devInstall()">Install & grant</button><span id="devMsg" class="muted"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>Run a tool</h2>
+      <div class="row"><input id="runName" placeholder="tool name"><input id="runInput" placeholder='{"name":"ada"}'><button onclick="runTool()">Run</button></div>
+      <pre class="snip" id="runOut" style="margin-top:10px">—</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const LT=new URLSearchParams(location.search).get('lt')||'';
+let firstLaunch=false;
+async function api(method,path,body){
+  const o={method,headers:{'X-Launch-Token':LT},credentials:'same-origin'};
+  if(body){o.headers['Content-Type']='application/json';o.body=JSON.stringify(body)}
+  const r=await fetch(path,o); let j={}; try{j=await r.json()}catch(e){}
+  return {ok:r.ok,status:r.status,data:j};
+}
+const esc=s=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+async function boot(){
+  const {data}=await api('GET','/api/state');
+  firstLaunch=data.first_launch;
+  if(data.unlocked){showDash(data.use_token)}else{showLock()}
+}
+function showLock(){
+  $('dash').classList.add('hide');$('lockCard').classList.remove('hide');$('lockBtn').classList.add('hide');
+  $('lockTitle').textContent=firstLaunch?'Create your password':'Unlock';
+  $('firstWarn').classList.toggle('hide',!firstLaunch);
+  $('unlockBtn').textContent=firstLaunch?'Create & start':'Unlock';
+  $('pw').focus();
+}
+async function doUnlock(){
+  const pw=$('pw').value; if(!pw)return;
+  $('lockErr').textContent='';$('busy').textContent='…';
+  const {ok,data}=await api('POST',firstLaunch?'/api/setup':'/api/unlock',{password:pw});
+  $('busy').textContent='';
+  if(!ok){$('lockErr').textContent=data.error||'failed';return}
+  $('pw').value='';showDash(data.use_token);
+}
+async function lock(){await api('POST','/api/lock');location.reload()}
+
+function showDash(tok){
+  $('lockCard').classList.add('hide');$('dash').classList.remove('hide');$('lockBtn').classList.remove('hide');
+  $('tagline').textContent='unlocked — your tools are live';
+  const b=location.origin;
+  $('snip').textContent='You have a local Foundry at '+b+' — it runs sandboxed tools for you.\n'
+    +'Authenticate every call:  X-Foundry-Token: '+(tok||'(unlock to mint)')+'\n'
+    +'▶ First, GET '+b+'/v1/foundry/guide  then follow it.\n'
+    +'List tools: GET '+b+'/v1/foundry/tools   ·   Run: POST '+b+'/v1/foundry/tools/{name}';
+  loadTools();
+}
+async function loadTools(){
+  const {data}=await api('GET','/api/foundry/tools');
+  const list=data.tools||[]; const el=$('tools'); el.innerHTML='';
+  if(!list.length){el.innerHTML='<div class="muted" style="padding:10px 0">No tools yet — author one below.</div>';return}
+  list.forEach(t=>{
+    const cls=t.class==='dev'?'<span class="badge dev">dev</span>':'<span class="badge mkt">marketplace</span>';
+    const g=t.granted?'<span class="badge granted">granted</span>':'';
+    const d=document.createElement('div'); d.className='tool';
+    d.innerHTML='<div><div><b>'+esc(t.name)+'</b> '+cls+' '+g+'</div><div class="meta">'+esc(t.version)+' · '+esc(t.description||'')+'</div></div>'
+      +'<div class="row"><button class="ghost tiny" onclick="useRun(\''+esc(t.name)+'\')">Run</button><button class="danger tiny" onclick="rm(\''+esc(t.name)+'\')">Remove</button></div>';
+    el.appendChild(d);
+  });
+}
+async function devInstall(){
+  const name=$('dName').value.trim(), src=$('dSrc').value.trim();
+  if(!name||!src){$('devMsg').textContent='name + source required';return}
+  const hosts=$('dHosts').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const manifest={name,version:'0.0.1',description:'dev tool',capabilities:{storage:{namespace:name},network:{hosts}}};
+  const {ok,data}=await api('POST','/api/foundry/dev/tools',{manifest,source:src});
+  if(!ok){$('devMsg').textContent=data.error||'failed';return}
+  await api('POST','/api/foundry/tools/'+encodeURIComponent(name)+'/grant',data.default_grant);
+  $('devMsg').innerHTML='<span class="ok">installed & granted ✓</span>';
+  $('dName').value=$('dSrc').value=$('dHosts').value='';
+  loadTools();
+}
+async function rm(name){ if(confirm('Remove '+name+'?')){ await api('DELETE','/api/foundry/tools/'+encodeURIComponent(name)); loadTools(); } }
+function useRun(name){ $('runName').value=name; runTool(); }
+async function runTool(){
+  const name=$('runName').value.trim(); if(!name)return;
+  let input={}; try{ input=JSON.parse($('runInput').value||'{}'); }catch(e){ $('runOut').textContent='bad JSON input'; return; }
+  // dev tools run on the control plane; granted marketplace tools too. Use the dev path
+  // for everything from the GUI (the human is present + consenting).
+  const {data}=await api('POST','/api/foundry/dev/tools/'+encodeURIComponent(name)+'/run',input);
+  $('runOut').textContent=JSON.stringify(data,null,2);
+}
+boot();
+</script>
+</body>
+</html>
