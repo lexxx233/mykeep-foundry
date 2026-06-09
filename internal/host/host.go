@@ -16,22 +16,49 @@ import (
 	"mykeep.ai/foundry/internal/store"
 )
 
-// Dispatcher brokers one tool invocation's host calls.
-type Dispatcher struct {
-	store *store.Store
-	ns    string // the tool's storage namespace (its capability grant)
+// VaultFiller is the by-reference Vault seam: it makes an authenticated request AS the
+// user without ever revealing the secret to Foundry or the tool. The suite injects a real
+// filler (routing to the Vault component); standalone Foundry leaves it nil.
+type VaultFiller interface {
+	Fetch(ctx context.Context, credential string, req VaultReq) (VaultResp, error)
 }
 
-// New binds a dispatcher to a store and the calling tool's namespace.
-func New(st *store.Store, namespace string) *Dispatcher {
-	return &Dispatcher{store: st, ns: namespace}
+// VaultReq / VaultResp are the by-reference request/response (no secret crosses them).
+type VaultReq struct {
+	Method  string            `json:"method"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+	Body    string            `json:"body"`
 }
+type VaultResp struct {
+	Status  int               `json:"status"`
+	Headers map[string]string `json:"headers"`
+	Body    string            `json:"body"`
+}
+
+// Config is one tool invocation's capability grant + the brokers that enforce it.
+type Config struct {
+	Store      *store.Store
+	Namespace  string      // storage namespace
+	AllowHosts []string    // network grant (exact hosts or ".suffix")
+	VaultCreds []string    // credential names the tool may use by reference
+	Broker     *Broker     // HTTP egress broker (nil = no network)
+	Vault      VaultFiller // by-reference Vault (nil = unavailable)
+}
+
+// Dispatcher brokers one tool invocation's host calls.
+type Dispatcher struct {
+	cfg Config
+}
+
+// New binds a dispatcher to a tool's capability grant.
+func New(cfg Config) *Dispatcher { return &Dispatcher{cfg: cfg} }
 
 // HostFunc adapts the dispatcher to the jsengine host ABI.
 func (d *Dispatcher) HostFunc() jsengine.HostFunc { return d.Call }
 
 // Call executes one host op. Unknown ops error (the tool sees a thrown exception).
-func (d *Dispatcher) Call(_ context.Context, op string, args json.RawMessage) (json.RawMessage, error) {
+func (d *Dispatcher) Call(ctx context.Context, op string, args json.RawMessage) (json.RawMessage, error) {
 	switch op {
 	case "echo": // M1 probe, harmless to keep
 		return args, nil
@@ -41,7 +68,7 @@ func (d *Dispatcher) Call(_ context.Context, op string, args json.RawMessage) (j
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
 		}
-		v, ok, err := d.store.KVGet(d.ns, a.Key)
+		v, ok, err := d.cfg.Store.KVGet(d.cfg.Namespace, a.Key)
 		return orNull(v, ok), err
 	case "kv.set":
 		var a struct {
@@ -51,13 +78,13 @@ func (d *Dispatcher) Call(_ context.Context, op string, args json.RawMessage) (j
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
 		}
-		return jnull, d.store.KVSet(d.ns, a.Key, valueBytes(a.Value))
+		return jnull, d.cfg.Store.KVSet(d.cfg.Namespace, a.Key, valueBytes(a.Value))
 	case "kv.del":
 		var a struct{ Key string }
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
 		}
-		return jnull, d.store.KVDel(d.ns, a.Key)
+		return jnull, d.cfg.Store.KVDel(d.cfg.Namespace, a.Key)
 
 	case "queue.push":
 		var a struct {
@@ -67,13 +94,13 @@ func (d *Dispatcher) Call(_ context.Context, op string, args json.RawMessage) (j
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
 		}
-		return jnull, d.store.QueuePush(d.ns, a.Name, valueBytes(a.Msg))
+		return jnull, d.cfg.Store.QueuePush(d.cfg.Namespace, a.Name, valueBytes(a.Msg))
 	case "queue.pop":
 		var a struct{ Name string }
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
 		}
-		v, ok, err := d.store.QueuePop(d.ns, a.Name)
+		v, ok, err := d.cfg.Store.QueuePop(d.cfg.Namespace, a.Name)
 		return orNull(v, ok), err
 
 	case "cache.get":
@@ -81,7 +108,7 @@ func (d *Dispatcher) Call(_ context.Context, op string, args json.RawMessage) (j
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
 		}
-		v, ok, err := d.store.CacheGet(d.ns, a.Key)
+		v, ok, err := d.cfg.Store.CacheGet(d.cfg.Namespace, a.Key)
 		return orNull(v, ok), err
 	case "cache.set":
 		var a struct {
@@ -92,7 +119,7 @@ func (d *Dispatcher) Call(_ context.Context, op string, args json.RawMessage) (j
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
 		}
-		return jnull, d.store.CacheSet(d.ns, a.Key, valueBytes(a.Value), time.Duration(a.TTLSeconds*float64(time.Second)))
+		return jnull, d.cfg.Store.CacheSet(d.cfg.Namespace, a.Key, valueBytes(a.Value), time.Duration(a.TTLSeconds*float64(time.Second)))
 
 	case "blob.put":
 		var a struct {
@@ -106,21 +133,67 @@ func (d *Dispatcher) Call(_ context.Context, op string, args json.RawMessage) (j
 		if err != nil {
 			return nil, fmt.Errorf("blob.put: data must be base64: %w", err)
 		}
-		return jnull, d.store.BlobPut(d.ns, a.Name, raw)
+		return jnull, d.cfg.Store.BlobPut(d.cfg.Namespace, a.Name, raw)
 	case "blob.get":
 		var a struct{ Name string }
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
 		}
-		v, ok, err := d.store.BlobGet(d.ns, a.Name)
+		v, ok, err := d.cfg.Store.BlobGet(d.cfg.Namespace, a.Name)
 		if err != nil || !ok {
 			return jnull, err
 		}
 		return json.Marshal(base64.StdEncoding.EncodeToString(v))
 
+	case "http.fetch":
+		if d.cfg.Broker == nil {
+			return nil, fmt.Errorf("network not available")
+		}
+		var fr fetchReq
+		if err := json.Unmarshal(args, &fr); err != nil {
+			return nil, err
+		}
+		resp, err := d.cfg.Broker.fetch(ctx, d.cfg.AllowHosts, fr)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(resp)
+
+	case "vault.fetch":
+		if d.cfg.Vault == nil {
+			return nil, fmt.Errorf("vault not configured")
+		}
+		var a struct {
+			Credential string            `json:"credential"`
+			Method     string            `json:"method"`
+			URL        string            `json:"url"`
+			Headers    map[string]string `json:"headers"`
+			Body       string            `json:"body"`
+		}
+		if err := json.Unmarshal(args, &a); err != nil {
+			return nil, err
+		}
+		if !contains(d.cfg.VaultCreds, a.Credential) {
+			return nil, fmt.Errorf("credential not granted: %s", a.Credential)
+		}
+		resp, err := d.cfg.Vault.Fetch(ctx, a.Credential, VaultReq{Method: a.Method, URL: a.URL, Headers: a.Headers, Body: a.Body})
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(resp)
+
 	default:
 		return nil, fmt.Errorf("unknown or ungranted op: %s", op)
 	}
+}
+
+func contains(list []string, v string) bool {
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 var jnull = json.RawMessage("null")

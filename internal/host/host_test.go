@@ -44,7 +44,7 @@ func TestToolUsesInfra(t *testing.T) {
 		t.Fatalf("engine.New: %v", err)
 	}
 	defer e.Close(ctx)
-	d := New(st, "weather")
+	d := New(Config{Store: st, Namespace: "weather"})
 
 	tool := `
 		async function run(input) {
@@ -84,7 +84,7 @@ func TestToolUsesInfra(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	defer st2.Close()
-	d2 := New(st2, "weather")
+	d2 := New(Config{Store: st2, Namespace: "weather"})
 	out2 := run(t, e, d2, `async function run(){ return await foundry.kv.get("city"); }`, nil)
 	if strings.TrimSpace(string(out2.Value)) != `"oslo"` {
 		t.Fatalf("kv did not persist across reopen: %s", out2.Value)
@@ -106,8 +106,8 @@ func TestToolNamespaceIsolation(t *testing.T) {
 	}
 	defer e.Close(ctx)
 
-	run(t, e, New(st, "toolA"), `async function run(){ await foundry.kv.set("secret","A"); return 1; }`, nil)
-	out := run(t, e, New(st, "toolB"), `async function run(){ return await foundry.kv.get("secret"); }`, nil)
+	run(t, e, New(Config{Store: st, Namespace: "toolA"}), `async function run(){ await foundry.kv.set("secret","A"); return 1; }`, nil)
+	out := run(t, e, New(Config{Store: st, Namespace: "toolB"}), `async function run(){ return await foundry.kv.get("secret"); }`, nil)
 	if strings.TrimSpace(string(out.Value)) != "null" {
 		t.Fatalf("toolB read toolA's namespace: %s", out.Value)
 	}
