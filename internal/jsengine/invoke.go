@@ -1,8 +1,8 @@
 package jsengine
 
 import (
-	_ "embed"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
