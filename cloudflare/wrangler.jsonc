@@ -1,0 +1,17 @@
+{
+  // Foundry marketplace Worker: submission pipeline (validate → Kimi K2.6 review → sign →
+  // publish) + signed-catalog/artifact serving. Deploy with: npx wrangler deploy
+  "name": "foundry-marketplace",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-04-01",
+  "ai": { "binding": "AI" },
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "foundry-registry" }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "foundry-marketplace", "database_id": "<set-after-create>" }
+  ],
+  // The ed25519 signing seed is a SECRET, never in this file:
+  //   wrangler secret put REGISTRY_SIGNING_KEY   (paste base64 of the 32-byte seed)
+  "observability": { "enabled": true }
+}
