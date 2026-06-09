@@ -15,11 +15,24 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	quickjs "github.com/aperturerobotics/go-quickjs-wasi-reactor/wazero-quickjs"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
+
+// Limits bound a single tool invocation. They are the hard ceiling on untrusted code:
+// Wall is enforced by a per-call context deadline (wazero interrupts even a tight JS
+// loop), MemPages caps the wasm linear memory the instance can grow to (64 KiB/page).
+type Limits struct {
+	Wall     time.Duration
+	MemPages uint32
+}
+
+// DefaultLimits apply to Invoke; a tool's manifest can narrow them per call via
+// InvokeWithLimits. 5s and 64 MiB are generous for IO-bound agent tools.
+var DefaultLimits = Limits{Wall: 5 * time.Second, MemPages: 1024}
 
 // Engine holds the shared compilation cache. It is safe for concurrent use: each call
 // builds its own runtime, so there is no shared mutable wasm state to guard.
@@ -50,11 +63,16 @@ func (e *Engine) Close(ctx context.Context) error {
 }
 
 // newRuntime builds a fresh, isolated runtime backed by the shared cache, with
-// context-cancellation wired in so a per-call deadline can interrupt even a tight JS loop.
-func (e *Engine) newRuntime(ctx context.Context) wazero.Runtime {
-	return wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().
+// context-cancellation wired in so a per-call deadline can interrupt even a tight JS
+// loop. memPages>0 caps the instance's wasm linear memory (the allocation-bomb ceiling).
+func (e *Engine) newRuntime(ctx context.Context, memPages uint32) wazero.Runtime {
+	cfg := wazero.NewRuntimeConfig().
 		WithCompilationCache(e.cache).
-		WithCloseOnContextDone(true))
+		WithCloseOnContextDone(true)
+	if memPages > 0 {
+		cfg = cfg.WithMemoryLimitPages(memPages)
+	}
+	return wazero.NewRuntimeWithConfig(ctx, cfg)
 }
 
 // Eval instantiates a fresh QuickJS, runs code, and returns whatever the script wrote to
@@ -62,7 +80,7 @@ func (e *Engine) newRuntime(ctx context.Context) wazero.Runtime {
 // real per-call invocation path (input/output marshaling + the foundry host global) is
 // built on top of this in later milestones.
 func (e *Engine) Eval(ctx context.Context, code string) (string, error) {
-	r := e.newRuntime(ctx)
+	r := e.newRuntime(ctx, DefaultLimits.MemPages)
 	defer r.Close(ctx)
 
 	var out bytes.Buffer

@@ -4,11 +4,16 @@ import (
 	_ "embed"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	quickjs "github.com/aperturerobotics/go-quickjs-wasi-reactor/wazero-quickjs"
 	"github.com/tetratelabs/wazero"
 )
+
+// ErrTimeout is returned when a tool exceeds its wall-clock limit (a runaway loop or a
+// host call that never completes). The instance is discarded; the engine stays healthy.
+var ErrTimeout = errors.New("tool exceeded time limit")
 
 //go:embed bootstrap.js
 var bootstrapJS string
@@ -34,11 +39,23 @@ type Result struct {
 // when no context deadline is set; a real deployment always passes a timeout.
 const maxIdleSpins = 256
 
-// Invoke runs a tool's JS source against an input, brokering its host calls through host,
-// and returns what run(input) resolved to. A fresh sandbox is used per call (clean state).
+// Invoke runs a tool with DefaultLimits. See InvokeWithLimits for per-tool bounds.
 func (e *Engine) Invoke(ctx context.Context, toolSrc string, input json.RawMessage, host HostFunc) (*Result, error) {
-	r := e.newRuntime(ctx)
-	defer r.Close(ctx)
+	return e.InvokeWithLimits(ctx, toolSrc, input, host, DefaultLimits)
+}
+
+// InvokeWithLimits runs a tool's JS source against an input, brokering its host calls
+// through host, and returns what run(input) resolved to. A fresh sandbox is used per call
+// (clean state). The call is bounded by lim: a wall-clock deadline (interrupts even a tight
+// JS loop) and a wasm-memory cap (bounds an allocation bomb). On either breach the instance
+// is discarded and a clear error returned; the engine stays healthy for the next call.
+func (e *Engine) InvokeWithLimits(ctx context.Context, toolSrc string, input json.RawMessage, host HostFunc, lim Limits) (*Result, error) {
+	// Boot the engine (instantiate + bootstrap) detached from the caller's deadline —
+	// engine startup is Foundry's overhead, not the tool's, so it must not count against
+	// the wall clock (and stays robust under slow, e.g. race-instrumented, environments).
+	bootCtx := context.WithoutCancel(ctx)
+	r := e.newRuntime(bootCtx, lim.MemPages)
+	defer r.Close(bootCtx)
 
 	fw := &frameWriter{}
 	in := newRespPipe()
@@ -49,30 +66,46 @@ func (e *Engine) Invoke(ctx context.Context, toolSrc string, input json.RawMessa
 		WithStdin(in).WithStdout(fw).WithStderr(fw).
 		WithEnv("FOUNDRY_INPUT", string(input))
 
-	q, err := quickjs.NewQuickJS(ctx, r, cfg)
+	q, err := quickjs.NewQuickJS(bootCtx, r, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("instantiate quickjs: %w", err)
 	}
-	defer q.Close(ctx)
+	defer q.Close(bootCtx)
 
-	if err := q.Init(ctx, []string{"qjs", "--std"}); err != nil {
+	if err := q.Init(bootCtx, []string{"qjs", "--std"}); err != nil {
 		return nil, fmt.Errorf("init: %w", err)
 	}
-	if err := q.Eval(ctx, bootstrapJS, false); err != nil {
+	if err := q.Eval(bootCtx, bootstrapJS, false); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
+
+	// From here on the tool's own code runs, so the wall-clock deadline applies. wazero's
+	// WithCloseOnContextDone honors the per-call context, so passing this to Eval/LoopOnce
+	// interrupts even a tight JS loop with no host calls.
+	if lim.Wall > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, lim.Wall)
+		defer cancel()
+	}
+
 	if err := q.Eval(ctx, toolSrc, false); err != nil {
+		if ctx.Err() != nil {
+			return nil, ErrTimeout
+		}
 		return nil, fmt.Errorf("tool load: %w", err)
 	}
 	if err := q.Eval(ctx, "__run()", false); err != nil {
+		if ctx.Err() != nil {
+			return nil, ErrTimeout
+		}
 		return nil, fmt.Errorf("tool start: %w", err)
 	}
 
 	var logs []LogLine
 	idle := 0
 	for {
-		if err := ctx.Err(); err != nil {
-			return nil, err
+		if ctx.Err() != nil {
+			return nil, ErrTimeout
 		}
 
 		progressed := false
@@ -95,6 +128,9 @@ func (e *Engine) Invoke(ctx context.Context, toolSrc string, input json.RawMessa
 
 		res, err := q.LoopOnce(ctx)
 		if err != nil {
+			if ce := ctx.Err(); ce != nil {
+				return nil, ErrTimeout // wazero interrupted a runaway loop at the deadline
+			}
 			return nil, fmt.Errorf("event loop: %w", err)
 		}
 		if res.IsPending() || progressed {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 )
 
 // echoSumHost is a test host: it implements `echo` (returns its args) and `sum`
@@ -36,8 +35,7 @@ func (e errUnknownOp) Error() string { return "unknown op: " + string(e) }
 // TestInvokeRoundTrip is the M1 gate: a tool awaits host calls, the Go host answers them,
 // and the tool's returned value comes back intact — the full host_call trampoline.
 func TestInvokeRoundTrip(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 	e, err := New(ctx)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -50,10 +48,7 @@ func TestInvokeRoundTrip(t *testing.T) {
 			return { echoed: echoed, doubled: input.n * 2 };
 		}
 	`
-	out, err := e.Invoke(ctx, simple, json.RawMessage(`{"name":"ada","n":21}`), echoSumHost)
-	if err != nil {
-		t.Fatalf("Invoke: %v", err)
-	}
+	out := mustInvoke(t, e, simple, json.RawMessage(`{"name":"ada","n":21}`), echoSumHost)
 	var got struct {
 		Echoed  map[string]string `json:"echoed"`
 		Doubled int               `json:"doubled"`
@@ -71,8 +66,7 @@ func TestInvokeRoundTrip(t *testing.T) {
 
 // TestInvokeSequentialCalls proves multiple awaited host calls in one tool all resolve.
 func TestInvokeSequentialCalls(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 	e, err := New(ctx)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -88,10 +82,7 @@ func TestInvokeSequentialCalls(t *testing.T) {
 			return { sum: acc };
 		}
 	`
-	out, err := e.Invoke(ctx, tool, json.RawMessage(`{"batches":[[1,2],[3,4],[5]]}`), echoSumHost)
-	if err != nil {
-		t.Fatalf("Invoke: %v", err)
-	}
+	out := mustInvoke(t, e, tool, json.RawMessage(`{"batches":[[1,2],[3,4],[5]]}`), echoSumHost)
 	if strings.TrimSpace(string(out.Value)) != `{"sum":15}` {
 		t.Fatalf("sequential calls => %s, want {\"sum\":15}", out.Value)
 	}
@@ -99,8 +90,7 @@ func TestInvokeSequentialCalls(t *testing.T) {
 
 // TestInvokeHostError surfaces a host-side error as a thrown JS exception the tool can catch.
 func TestInvokeHostError(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 	e, err := New(ctx)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -116,10 +106,7 @@ func TestInvokeHostError(t *testing.T) {
 	denyHost := func(_ context.Context, op string, _ json.RawMessage) (json.RawMessage, error) {
 		return nil, errUnknownOp(op)
 	}
-	out, err := e.Invoke(ctx, tool, nil, denyHost)
-	if err != nil {
-		t.Fatalf("Invoke: %v", err)
-	}
+	out := mustInvoke(t, e, tool, nil, denyHost)
 	if !strings.Contains(string(out.Value), `"caught":true`) {
 		t.Fatalf("tool did not catch host error: %s", out.Value)
 	}
@@ -127,8 +114,7 @@ func TestInvokeHostError(t *testing.T) {
 
 // TestInvokeCapturesLogs proves console.log is captured as structured log lines.
 func TestInvokeCapturesLogs(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 	e, err := New(ctx)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -136,10 +122,7 @@ func TestInvokeCapturesLogs(t *testing.T) {
 	defer e.Close(ctx)
 
 	tool := `async function run() { console.log("hello", 42); return 1; }`
-	out, err := e.Invoke(ctx, tool, nil, echoSumHost)
-	if err != nil {
-		t.Fatalf("Invoke: %v", err)
-	}
+	out := mustInvoke(t, e, tool, nil, echoSumHost)
 	if len(out.Logs) != 1 || !strings.Contains(out.Logs[0].Msg, "hello 42") {
 		t.Fatalf("logs => %+v, want one 'hello 42'", out.Logs)
 	}
