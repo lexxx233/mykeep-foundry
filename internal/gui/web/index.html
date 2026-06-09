@@ -82,6 +82,12 @@
     </div>
 
     <div class="card">
+      <div class="topbar"><h2>Marketplace</h2><button class="ghost tiny" onclick="refreshMarket()">Refresh catalog</button></div>
+      <p class="sub" style="margin-bottom:6px">Install published tools. Each is signed by the registry and AI-reviewed; you approve its capabilities before it runs.</p>
+      <div id="market"><div class="muted" style="padding:10px 0">Click “Refresh catalog”.</div></div>
+    </div>
+
+    <div class="card">
       <div class="topbar"><h2>Installed tools</h2><button class="ghost tiny" onclick="loadTools()">↻</button></div>
       <div id="tools"><div class="muted" style="padding:10px 0">—</div></div>
     </div>
@@ -171,6 +177,30 @@ async function devInstall(){
   await api('POST','/api/foundry/tools/'+encodeURIComponent(name)+'/grant',data.default_grant);
   $('devMsg').innerHTML='<span class="ok">installed & granted ✓</span>';
   $('dName').value=$('dSrc').value=$('dHosts').value='';
+  loadTools();
+}
+async function refreshMarket(){
+  const {ok,status,data}=await api('POST','/api/foundry/market/refresh');
+  const el=$('market');
+  if(status===501){ el.innerHTML='<div class="muted" style="padding:10px 0">Marketplace not configured in this build.</div>'; return; }
+  if(!ok){ el.innerHTML='<div class="muted" style="padding:10px 0">Catalog unavailable.</div>'; return; }
+  const tools=(data.catalog&&data.catalog.tools)||[];
+  if(!tools.length){ el.innerHTML='<div class="muted" style="padding:10px 0">Catalog is empty.</div>'; return; }
+  el.innerHTML='';
+  tools.forEach(t=>{
+    const v=(t.versions&&t.versions[0])||{}; const rev=v.review?(' · review: '+esc(v.review.verdict)+' ('+v.review.risk_score+')'):'';
+    const d=document.createElement('div'); d.className='tool';
+    d.innerHTML='<div><div><b>'+esc(t.id)+'</b> <span class="badge mkt">marketplace</span></div>'
+      +'<div class="meta">'+esc(t.latest||'')+rev+'</div></div>'
+      +'<div class="row"><button class="ghost tiny" onclick="install(\''+esc(t.id)+'\')">Install</button></div>';
+    el.appendChild(d);
+  });
+}
+async function install(id){
+  const {ok,data}=await api('POST','/api/foundry/tools/install',{id});
+  if(!ok){alert('install failed: '+(data.error||''));return}
+  // approve the default grant (the human could narrow it; here we accept the declared set)
+  await api('POST','/api/foundry/tools/'+encodeURIComponent(data.installed)+'/grant',data.default_grant);
   loadTools();
 }
 async function rm(name){ if(confirm('Remove '+name+'?')){ await api('DELETE','/api/foundry/tools/'+encodeURIComponent(name)); loadTools(); } }

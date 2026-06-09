@@ -44,7 +44,7 @@ func newServer(t *testing.T) (*Server, *registry.Registry) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	reg := registry.New(st, []ed25519.PublicKey{pub})
 	rt := runtime.New(e, st, reg, host.NewBroker(0), nil)
-	srv := New(rt, reg, Options{UseToken: "USE", ControlToken: "CTRL"})
+	srv := New(rt, reg, nil, Options{UseToken: "USE", ControlToken: "CTRL"})
 
 	// install a granted marketplace tool (runnable on the USE plane)
 	m, _ := registry.ParseManifest([]byte(mManifest))

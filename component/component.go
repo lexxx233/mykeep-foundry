@@ -26,6 +26,16 @@ const ID = "foundry"
 
 const dbFile = "foundry.db.enc"
 
+// VaultFiller / VaultReq / VaultResp are re-exported (aliases to the internal host types)
+// so a suite aggregator — which can't import foundry's internal/ packages — can implement
+// the by-reference Vault seam and pass it as Options.Vault. The adapter routes
+// foundry.vault.fetch through the suite's Vault component; the secret never enters Foundry.
+type (
+	VaultFiller = host.VaultFiller
+	VaultReq    = host.VaultReq
+	VaultResp   = host.VaultResp
+)
+
 // Options configure a Foundry component.
 type Options struct {
 	DataDir         string              // where foundry.db.enc lives
@@ -36,6 +46,7 @@ type Options struct {
 	ControlSession  string              // GUI session value also accepted on control plane
 	SessionCookie   string              // cookie name (suite uses "mykeep_session")
 	RegistryPubKeys []ed25519.PublicKey // pinned marketplace keys (empty = no marketplace install)
+	MarketURL       string              // marketplace base URL (empty = no marketplace install)
 	Vault           host.VaultFiller    // by-reference Vault (suite injects; nil standalone)
 }
 
@@ -83,8 +94,12 @@ func (c *Component) Unlock(ctx context.Context, dek []byte) error {
 	}
 	reg := registry.New(st, c.opts.RegistryPubKeys)
 	rt := runtime.New(eng, st, reg, host.NewBroker(0), c.opts.Vault)
+	var client *registry.Client
+	if c.opts.MarketURL != "" && len(c.opts.RegistryPubKeys) > 0 {
+		client = registry.NewClient(c.opts.MarketURL, c.opts.RegistryPubKeys)
+	}
 	c.store, c.engine = st, eng
-	c.srv = server.New(rt, reg, server.Options{
+	c.srv = server.New(rt, reg, client, server.Options{
 		EnableLAN:      c.opts.EnableLAN,
 		UseToken:       c.opts.UseToken,
 		ControlToken:   c.opts.ControlToken,

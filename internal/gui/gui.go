@@ -8,6 +8,7 @@ package gui
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/subtle"
 	_ "embed"
@@ -42,6 +43,11 @@ type App struct {
 	idle        time.Duration
 	launchToken string
 
+	// Marketplace config (empty = no marketplace; the catalog card reports "not
+	// configured"). A release pins the registry key + URL here.
+	marketURL string
+	pubkeys   []ed25519.PublicKey
+
 	mu       sync.Mutex
 	comp     *component.Component
 	planes   http.Handler
@@ -52,6 +58,12 @@ type App struct {
 // New builds a GUI over a data directory. idle<=0 disables idle auto-lock.
 func New(dataDir, addr, version string, idle time.Duration) *App {
 	return &App{dataDir: dataDir, addr: addr, version: version, idle: idle, launchToken: randHex(24)}
+}
+
+// WithMarketplace configures the pinned registry so the catalog card can install tools.
+func (a *App) WithMarketplace(url string, pubkeys []ed25519.PublicKey) *App {
+	a.marketURL, a.pubkeys = url, pubkeys
+	return a
 }
 
 func (a *App) keyPath() string { return filepath.Join(a.dataDir, "foundry.key.json") }
@@ -176,6 +188,7 @@ func (a *App) open(w http.ResponseWriter, r *http.Request, create bool) {
 	comp, err := component.New(component.Options{
 		DataDir: a.dataDir, Version: a.version,
 		ControlSession: session, SessionCookie: sessionCookie,
+		MarketURL: a.marketURL, RegistryPubKeys: a.pubkeys,
 	})
 	if err != nil {
 		writeErr(w, 500, err.Error())

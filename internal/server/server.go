@@ -26,14 +26,15 @@ type Options struct {
 	SessionCookie  string // cookie name (default "fdy_session"; the suite uses "mykeep_session")
 }
 
-// Server brokers the two planes over a runtime + registry.
+// Server brokers the two planes over a runtime + registry (+ an optional marketplace client).
 type Server struct {
-	rt  *runtime.Runtime
-	reg *registry.Registry
-	opt Options
+	rt     *runtime.Runtime
+	reg    *registry.Registry
+	market *registry.Client // nil when no marketplace is configured
+	opt    Options
 }
 
-func New(rt *runtime.Runtime, reg *registry.Registry, opt Options) *Server {
+func New(rt *runtime.Runtime, reg *registry.Registry, market *registry.Client, opt Options) *Server {
 	if opt.UseToken == "" {
 		opt.UseToken = randToken()
 	}
@@ -43,7 +44,7 @@ func New(rt *runtime.Runtime, reg *registry.Registry, opt Options) *Server {
 	if opt.SessionCookie == "" {
 		opt.SessionCookie = "fdy_session"
 	}
-	return &Server{rt: rt, reg: reg, opt: opt}
+	return &Server{rt: rt, reg: reg, market: market, opt: opt}
 }
 
 func (s *Server) UseToken() string     { return s.opt.UseToken }
@@ -67,6 +68,8 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	ctrl.HandleFunc("DELETE /api/foundry/tools/{name}", s.ctrlRemove)
 	ctrl.HandleFunc("POST /api/foundry/dev/tools", s.ctrlDevInstall)
 	ctrl.HandleFunc("POST /api/foundry/dev/tools/{name}/run", s.ctrlDevRun)
+	ctrl.HandleFunc("POST /api/foundry/market/refresh", s.ctrlMarketRefresh)
+	ctrl.HandleFunc("POST /api/foundry/tools/install", s.ctrlInstall)
 	mux.Handle("/api/foundry/", loopbackOnly(s.controlAuth(ctrl)))
 }
 
@@ -186,6 +189,46 @@ func (s *Server) ctrlDevInstall(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) ctrlDevRun(w http.ResponseWriter, r *http.Request) {
 	s.runTool(w, r, r.PathValue("name")) // dev run is control-plane only (human consent in the GUI)
+}
+
+// ctrlMarketRefresh fetches + verifies the signed catalog and returns it for the GUI.
+func (s *Server) ctrlMarketRefresh(w http.ResponseWriter, r *http.Request) {
+	if s.market == nil {
+		writeErr(w, 501, "marketplace not configured")
+		return
+	}
+	if err := s.market.EnsureIndex(r.Context()); err != nil {
+		writeErr(w, 502, "catalog unavailable")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"catalog": s.market.Catalog()})
+}
+
+type installReq struct {
+	ID      string `json:"id"`
+	Version string `json:"version"`
+}
+
+// ctrlInstall installs a published tool from the verified catalog (download → verify zip
+// hash → verify source signature → install). It returns the default grant for the human to
+// approve, mirroring the dev-install flow.
+func (s *Server) ctrlInstall(w http.ResponseWriter, r *http.Request) {
+	if s.market == nil {
+		writeErr(w, 501, "marketplace not configured")
+		return
+	}
+	var req installReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+		writeErr(w, 400, "bad_request")
+		return
+	}
+	m, err := s.market.Install(r.Context(), s.reg, req.ID, req.Version)
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"installed": m.Name, "version": m.Version,
+		"class": registry.ClassMarketplace, "manifest_hash": m.Hash(), "default_grant": registry.DefaultGrant(m)})
 }
 
 // runTool runs a tool by name with the request body as input, shared by both planes.
