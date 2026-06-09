@@ -4,8 +4,12 @@
 
 ### A portable, local platform that gives any AI agent new tools — and the backend they run on.
 
-**Status: vision / design.** No code yet — this repo holds the design while the
-[Capsule](https://github.com/lexxx233/mykeep-capsule) (component #1) ships.
+**Status: v1 implemented.** A working Go implementation is in place — JS tools run in a
+QuickJS-on-WASM sandbox (pure Go, zero CGo) with hard time/memory limits; an encrypted
+backend (kv/queue/cache/blob); brokered, SSRF-guarded HTTP + Vault-by-reference; a
+capability-grant model; an ed25519-signed marketplace with install-on-demand and a
+Kimi-K2.6 AI exploit-review Worker; a two-plane REST API + hardened GUI; and suite
+integration. Runs standalone or as the fourth component of the [mykeep](https://mykeep.ai) suite.
 
 [mykeep.ai](https://mykeep.ai) · **Personal · Private · Portable**
 
@@ -53,10 +57,17 @@ The same shape as the rest of mykeep: a **loopback REST API + a pasted guide** �
 zero-install floor that works with any agent that can make an HTTP call.
 
 ```
-GET  /v1/tools          → the catalog (each tool's name, description, parameter schema)
-POST /v1/tools/{name}   → run a tool; Foundry sandboxes it, brokers its capabilities,
-                          and returns the result
+GET  /v1/foundry/guide          → the paste-able operating manual
+GET  /v1/foundry/tools          → the catalog (each tool's name, description, params_schema)
+POST /v1/foundry/tools/{name}   → run a granted tool; Foundry sandboxes it, brokers its
+                                  capabilities, and returns the result
 ```
+
+The agent (USE plane, `X-Foundry-Token`, loopback unless `--lan`) can list and run granted
+tools but never install, grant, or author them — that's the human's control plane
+(`/api/foundry/*`, loopback-only). A tool author writes JavaScript; the host functions are a
+`foundry` global (`foundry.kv/queue/cache/blob`, `foundry.http.fetch`, `foundry.vault.fetch`,
+`foundry.log`), each enforced in Go against the tool's grant.
 
 No client configuration required. For hosts that want native tool-use, Foundry can *also*
 present the same catalog over MCP — but that's an optional accelerator, never a requirement.
@@ -81,6 +92,23 @@ Foundry composes with its siblings, all on the same stick, under one password:
 - **The agent reasons, mykeep provides** — Foundry runs tools and infrastructure; it does no
   LLM reasoning of its own.
 - **Capability-scoped** — tools get exactly the powers you grant, enforced by the sandbox.
+
+## Build / run
+
+```sh
+go build ./cmd/foundry      # or: make build  ->  bin/foundry
+go test ./...               # the Go suite
+make guard                  # prove zero CGo in the dependency graph
+make cross                  # cross-compile all six win/mac/linux × amd64/arm64 targets
+./bin/foundry               # gui (default): first launch sets a password, then serves
+./bin/foundry serve         # headless: unlock via $MYKEEP_FOUNDRY_PASSPHRASE / stdin
+```
+
+The marketplace edge (submission → Kimi-K2.6 review → sign → publish) lives in
+`cloudflare/` and deploys with `wrangler` — see `cloudflare/README.md`. The Foundry binary
+verifies every artifact against a **pinned** ed25519 registry key, so the service is a
+convenience, not a trust root; AI review is defense-in-depth, never the sole control (the
+WASM sandbox + capability grant + human consent are the floor).
 
 ---
 
