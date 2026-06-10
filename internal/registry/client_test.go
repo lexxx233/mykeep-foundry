@@ -49,7 +49,7 @@ func fakeRegistry(t *testing.T, priv ed25519.PrivateKey, tamperZip bool) *httpte
 				Version: "1.0.0", Artifact: "tools/alice/greet/1.0.0/tool.zip",
 				ZipSHA256: zipSHA256(zipped), // hash of the GENUINE zip
 				SourceSig: Sign(priv, m.Name, m.Version, []byte(mclientSource)),
-				Manifest:  json.RawMessage(m.Canonical()),
+				Manifest:  json.RawMessage(m.Canonical()), Verified: true,
 				Review:    &Review{Verdict: "pass", Model: "@cf/moonshotai/kimi-k2.6", RiskScore: 5},
 			}},
 		}},

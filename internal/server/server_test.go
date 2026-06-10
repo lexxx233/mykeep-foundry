@@ -49,7 +49,7 @@ func newServer(t *testing.T) (*Server, *registry.Registry) {
 	// install a granted marketplace tool (runnable on the USE plane)
 	m, _ := registry.ParseManifest([]byte(mManifest))
 	sig := registry.Sign(priv, m.Name, m.Version, []byte(mSource))
-	if err := reg.InstallMarketplace(m, mSource, sig); err != nil {
+	if err := reg.InstallMarketplace(m, mSource, sig, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.SetGrant("greet", registry.DefaultGrant(m)); err != nil {

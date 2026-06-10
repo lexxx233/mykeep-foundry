@@ -5,7 +5,9 @@ import (
 	"errors"
 )
 
-// ToolRow is a persisted tool: its manifest + JS source + provenance class.
+// ToolRow is a persisted tool: its manifest + JS source + provenance class. Verified is
+// true when a marketplace tool passed the registry's AI security review (dev tools and
+// unreviewed marketplace tools are unverified — still installable, just not vouched for).
 type ToolRow struct {
 	Name      string
 	Version   string
@@ -13,6 +15,7 @@ type ToolRow struct {
 	Manifest  []byte
 	Source    []byte
 	SourceSHA string
+	Verified  bool
 }
 
 // PutTool inserts or replaces an installed tool.
@@ -20,11 +23,11 @@ func (s *Store) PutTool(t ToolRow) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.conn.ExecContext(s.ctx,
-		`INSERT INTO tools(name,version,class,manifest,source,source_sha,installed_at) VALUES(?,?,?,?,?,?,?)
+		`INSERT INTO tools(name,version,class,manifest,source,source_sha,verified,installed_at) VALUES(?,?,?,?,?,?,?,?)
 		 ON CONFLICT(name) DO UPDATE SET version=excluded.version, class=excluded.class,
 		   manifest=excluded.manifest, source=excluded.source, source_sha=excluded.source_sha,
-		   installed_at=excluded.installed_at`,
-		t.Name, t.Version, t.Class, t.Manifest, t.Source, t.SourceSHA, now())
+		   verified=excluded.verified, installed_at=excluded.installed_at`,
+		t.Name, t.Version, t.Class, t.Manifest, t.Source, t.SourceSHA, b2i(t.Verified), now())
 	if err == nil {
 		s.markDirtyLocked()
 	}
@@ -36,23 +39,25 @@ func (s *Store) GetTool(name string) (*ToolRow, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var t ToolRow
+	var verified int
 	err := s.conn.QueryRowContext(s.ctx,
-		`SELECT name,version,class,manifest,source,source_sha FROM tools WHERE name=?`, name).
-		Scan(&t.Name, &t.Version, &t.Class, &t.Manifest, &t.Source, &t.SourceSHA)
+		`SELECT name,version,class,manifest,source,source_sha,verified FROM tools WHERE name=?`, name).
+		Scan(&t.Name, &t.Version, &t.Class, &t.Manifest, &t.Source, &t.SourceSHA, &verified)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
+	t.Verified = verified != 0
 	return &t, true, nil
 }
 
-// ListTools returns all installed tools (manifest + class; source omitted).
+// ListTools returns all installed tools (manifest + class + verified; source omitted).
 func (s *Store) ListTools() ([]ToolRow, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.conn.QueryContext(s.ctx, `SELECT name,version,class,manifest,source_sha FROM tools ORDER BY name`)
+	rows, err := s.conn.QueryContext(s.ctx, `SELECT name,version,class,manifest,source_sha,verified FROM tools ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +65,21 @@ func (s *Store) ListTools() ([]ToolRow, error) {
 	var out []ToolRow
 	for rows.Next() {
 		var t ToolRow
-		if err := rows.Scan(&t.Name, &t.Version, &t.Class, &t.Manifest, &t.SourceSHA); err != nil {
+		var verified int
+		if err := rows.Scan(&t.Name, &t.Version, &t.Class, &t.Manifest, &t.SourceSHA, &verified); err != nil {
 			return nil, err
 		}
+		t.Verified = verified != 0
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // DeleteTool removes a tool and its grant.

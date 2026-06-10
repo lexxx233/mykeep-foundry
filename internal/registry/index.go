@@ -40,6 +40,7 @@ type IndexVersion struct {
 	ZipSHA256 string          `json:"zip_sha256"` // integrity of the downloaded artifact
 	SourceSig []byte          `json:"source_sig"` // ed25519 over name|version|source-sha
 	Manifest  json.RawMessage `json:"manifest"`
+	Verified  bool            `json:"verified"` // passed AI review (else listed + installable, just not vouched)
 	Review    *Review         `json:"review,omitempty"`
 }
 

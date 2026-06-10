@@ -85,8 +85,9 @@ func (c *Client) Install(ctx context.Context, reg *Registry, id, version string)
 		return nil, err
 	}
 	// InstallMarketplace re-verifies the source signature against the pinned key — so even
-	// the verified catalog can't smuggle in code the registry didn't sign.
-	if err := reg.InstallMarketplace(m, source, ver.SourceSig); err != nil {
+	// the verified catalog can't smuggle in code the registry didn't sign. ver.Verified is
+	// trustworthy because the whole index was signature-checked in EnsureIndex.
+	if err := reg.InstallMarketplace(m, source, ver.SourceSig, ver.Verified); err != nil {
 		return nil, err
 	}
 	return m, nil

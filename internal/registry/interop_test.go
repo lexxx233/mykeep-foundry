@@ -66,14 +66,14 @@ func TestWorkerInterop(t *testing.T) {
 
 	// Go verifies the WebCrypto signature and installs.
 	reg := New(newStore(t), []ed25519.PublicKey{pub})
-	if err := reg.InstallMarketplace(m, source, sig); err != nil {
+	if err := reg.InstallMarketplace(m, source, sig, true); err != nil {
 		t.Fatalf("InstallMarketplace on Worker artifact: %v", err)
 	}
 
 	// A flipped signature byte is rejected.
 	bad := append([]byte(nil), sig...)
 	bad[0] ^= 0xff
-	if err := reg.InstallMarketplace(m, source, bad); err == nil {
+	if err := reg.InstallMarketplace(m, source, bad, true); err == nil {
 		t.Fatal("tampered signature accepted")
 	}
 }

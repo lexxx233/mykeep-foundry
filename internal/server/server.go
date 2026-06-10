@@ -93,6 +93,7 @@ func (s *Server) useCatalog(w http.ResponseWriter, _ *http.Request) {
 		Name         string          `json:"name"`
 		Version      string          `json:"version"`
 		Description  string          `json:"description"`
+		Verified     bool            `json:"verified"`
 		ParamsSchema json.RawMessage `json:"params_schema,omitempty"`
 	}
 	out := []entry{}
@@ -103,7 +104,7 @@ func (s *Server) useCatalog(w http.ResponseWriter, _ *http.Request) {
 		if _, err := s.reg.Grant(t.Manifest.Name); err != nil {
 			continue // ungranted → not runnable
 		}
-		out = append(out, entry{t.Manifest.Name, t.Manifest.Version, t.Manifest.Description, t.Manifest.ParamsSchema})
+		out = append(out, entry{t.Manifest.Name, t.Manifest.Version, t.Manifest.Description, t.Verified, t.Manifest.ParamsSchema})
 	}
 	writeJSON(w, 200, map[string]any{"tools": out})
 }
@@ -132,11 +133,12 @@ func (s *Server) ctrlList(w http.ResponseWriter, _ *http.Request) {
 		Class       string `json:"class"`
 		Description string `json:"description"`
 		Granted     bool   `json:"granted"`
+		Verified    bool   `json:"verified"`
 	}
 	out := []entry{}
 	for _, t := range tools {
 		_, gerr := s.reg.Grant(t.Manifest.Name)
-		out = append(out, entry{t.Manifest.Name, t.Manifest.Version, t.Class, t.Manifest.Description, gerr == nil})
+		out = append(out, entry{t.Manifest.Name, t.Manifest.Version, t.Class, t.Manifest.Description, gerr == nil, t.Verified})
 	}
 	writeJSON(w, 200, map[string]any{"tools": out})
 }
@@ -227,8 +229,13 @@ func (s *Server) ctrlInstall(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	verified := false
+	if t, gerr := s.reg.Get(m.Name); gerr == nil {
+		verified = t.Verified
+	}
 	writeJSON(w, 200, map[string]any{"installed": m.Name, "version": m.Version,
-		"class": registry.ClassMarketplace, "manifest_hash": m.Hash(), "default_grant": registry.DefaultGrant(m)})
+		"class": registry.ClassMarketplace, "verified": verified,
+		"manifest_hash": m.Hash(), "default_grant": registry.DefaultGrant(m)})
 }
 
 // runTool runs a tool by name with the request body as input, shared by both planes.

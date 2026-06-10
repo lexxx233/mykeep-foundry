@@ -120,13 +120,13 @@ func TestMarketplaceSignature(t *testing.T) {
 	// wrong signature (signed by a different key) → rejected
 	_, badPriv, _ := ed25519.GenerateKey(rand.Reader)
 	badSig := registry.Sign(badPriv, m.Name, m.Version, []byte(weatherSrc))
-	if err := reg.InstallMarketplace(m, weatherSrc, badSig); !errors.Is(err, registry.ErrBadSignature) {
+	if err := reg.InstallMarketplace(m, weatherSrc, badSig, true); !errors.Is(err, registry.ErrBadSignature) {
 		t.Fatalf("bad-sig install => %v, want ErrBadSignature", err)
 	}
 
 	// correct registry signature → installs
 	goodSig := registry.Sign(priv, m.Name, m.Version, []byte(weatherSrc))
-	if err := reg.InstallMarketplace(m, weatherSrc, goodSig); err != nil {
+	if err := reg.InstallMarketplace(m, weatherSrc, goodSig, true); err != nil {
 		t.Fatalf("good-sig install: %v", err)
 	}
 	tool, err := reg.Get("weather")
@@ -135,7 +135,7 @@ func TestMarketplaceSignature(t *testing.T) {
 	}
 
 	// tampered source under the same signature → rejected
-	if err := reg.InstallMarketplace(m, weatherSrc+"// evil", goodSig); !errors.Is(err, registry.ErrBadSignature) {
+	if err := reg.InstallMarketplace(m, weatherSrc+"// evil", goodSig, true); !errors.Is(err, registry.ErrBadSignature) {
 		t.Fatalf("tampered-source install => %v, want ErrBadSignature", err)
 	}
 }

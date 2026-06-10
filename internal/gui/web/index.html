@@ -52,6 +52,8 @@
   .badge.dev{color:var(--warn);border-color:var(--warn-soft);background:var(--warn-soft)}
   .badge.mkt{color:var(--ship);border-color:rgba(70,194,102,.25)}
   .badge.granted{color:var(--accent);border-color:var(--accent-line)}
+  .badge.verified{color:var(--ship);border-color:rgba(70,194,102,.35);background:rgba(70,194,102,.08)}
+  .badge.unverified{color:var(--warn);border-color:var(--warn-soft);background:var(--warn-soft)}
   pre.snip{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px;font:12px/1.6 var(--mono);margin:0;color:var(--muted)}
   .warnbox{background:var(--warn-soft);border:1px solid rgba(224,179,65,.32);color:#e7c878;font-size:12.5px;padding:.55rem .7rem;border-radius:8px;margin:.6rem 0}
 </style>
@@ -83,7 +85,7 @@
 
     <div class="card">
       <div class="topbar"><h2>Marketplace</h2><button class="ghost tiny" onclick="refreshMarket()">Refresh catalog</button></div>
-      <p class="sub" style="margin-bottom:6px">Install published tools. Each is signed by the registry and AI-reviewed; you approve its capabilities before it runs.</p>
+      <p class="sub" style="margin-bottom:6px">Anyone can publish. Every tool is signed by the registry; <b class="ok">verified</b> ones also passed AI review. Either way, the sandbox and the capabilities you approve are your safety floor.</p>
       <div id="market"><div class="muted" style="padding:10px 0">Click “Refresh catalog”.</div></div>
     </div>
 
@@ -160,9 +162,10 @@ async function loadTools(){
   if(!list.length){el.innerHTML='<div class="muted" style="padding:10px 0">No tools yet — author one below.</div>';return}
   list.forEach(t=>{
     const cls=t.class==='dev'?'<span class="badge dev">dev</span>':'<span class="badge mkt">marketplace</span>';
+    const vb=t.class==='dev'?'':(t.verified?'<span class="badge verified">verified</span>':'<span class="badge unverified">unverified</span>');
     const g=t.granted?'<span class="badge granted">granted</span>':'';
     const d=document.createElement('div'); d.className='tool';
-    d.innerHTML='<div><div><b>'+esc(t.name)+'</b> '+cls+' '+g+'</div><div class="meta">'+esc(t.version)+' · '+esc(t.description||'')+'</div></div>'
+    d.innerHTML='<div><div><b>'+esc(t.name)+'</b> '+cls+' '+vb+' '+g+'</div><div class="meta">'+esc(t.version)+' · '+esc(t.description||'')+'</div></div>'
       +'<div class="row"><button class="ghost tiny" onclick="useRun(\''+esc(t.name)+'\')">Run</button><button class="danger tiny" onclick="rm(\''+esc(t.name)+'\')">Remove</button></div>';
     el.appendChild(d);
   });
@@ -189,14 +192,16 @@ async function refreshMarket(){
   el.innerHTML='';
   tools.forEach(t=>{
     const v=(t.versions&&t.versions[0])||{}; const rev=v.review?(' · review: '+esc(v.review.verdict)+' ('+v.review.risk_score+')'):'';
+    const vb=v.verified?'<span class="badge verified">verified</span>':'<span class="badge unverified">unverified</span>';
     const d=document.createElement('div'); d.className='tool';
-    d.innerHTML='<div><div><b>'+esc(t.id)+'</b> <span class="badge mkt">marketplace</span></div>'
+    d.innerHTML='<div><div><b>'+esc(t.id)+'</b> '+vb+'</div>'
       +'<div class="meta">'+esc(t.latest||'')+rev+'</div></div>'
-      +'<div class="row"><button class="ghost tiny" onclick="install(\''+esc(t.id)+'\')">Install</button></div>';
+      +'<div class="row"><button class="ghost tiny" onclick="install(\''+esc(t.id)+'\','+(v.verified?'true':'false')+')">Install</button></div>';
     el.appendChild(d);
   });
 }
-async function install(id){
+async function install(id,verified){
+  if(!verified && !confirm(id+' has NOT passed AI review (unverified).\n\nThe sandbox and the capabilities you grant are your safety floor — review what it asks for before approving.\n\nInstall anyway?')) return;
   const {ok,data}=await api('POST','/api/foundry/tools/install',{id});
   if(!ok){alert('install failed: '+(data.error||''));return}
   // approve the default grant (the human could narrow it; here we accept the declared set)

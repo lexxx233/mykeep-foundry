@@ -107,7 +107,7 @@ var schema = []string{
 	`CREATE TABLE IF NOT EXISTS cache (ns TEXT, k TEXT, v BLOB, bytes INTEGER, expires_at INTEGER, PRIMARY KEY(ns,k))`,
 	`CREATE TABLE IF NOT EXISTS blob  (ns TEXT, name TEXT, data BLOB, bytes INTEGER, updated_at INTEGER, PRIMARY KEY(ns,name))`,
 	`CREATE TABLE IF NOT EXISTS quota (ns TEXT PRIMARY KEY, limit_bytes INTEGER)`,
-	`CREATE TABLE IF NOT EXISTS tools (name TEXT PRIMARY KEY, version TEXT, class TEXT, manifest BLOB, source BLOB, source_sha TEXT, installed_at INTEGER)`,
+	`CREATE TABLE IF NOT EXISTS tools (name TEXT PRIMARY KEY, version TEXT, class TEXT, manifest BLOB, source BLOB, source_sha TEXT, verified INTEGER NOT NULL DEFAULT 0, installed_at INTEGER)`,
 	`CREATE TABLE IF NOT EXISTS grants(tool TEXT PRIMARY KEY, caps BLOB, manifest_sha TEXT, granted_at INTEGER)`,
 	`CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, tool TEXT, event TEXT, detail TEXT, prev_hash TEXT, hash TEXT)`,
 }
