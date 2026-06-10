@@ -53,20 +53,28 @@ async function submit(request, env) {
   const id = `${author}/${manifest.name}`;
   await env.BUCKET.put(`reviews/${id}/${manifest.version}.json`, JSON.stringify({ verdict, decision }, null, 2));
 
+  // Open-submission model:
+  //   reject → never published (malware / sandbox-escape — the only hard block)
+  //   flag   → published UNVERIFIED + queued for a human (installable with a warning)
+  //   pass   → published VERIFIED
+  // The runtime triad (sandbox + grants + human consent) is the safety floor for both
+  // published outcomes; AI review only decides the `verified` badge, never installability.
   if (decision === "reject") return json({ status: "rejected", verdict }, 200);
+
   if (decision === "flag") {
     await env.DB.prepare(
       "INSERT OR REPLACE INTO flagged(id, version, submitted_at, verdict) VALUES(?,?,?,?)"
     ).bind(id, manifest.version, Date.now(), JSON.stringify(verdict)).run();
-    return json({ status: "flagged_for_review", verdict }, 202);
+    const published = await publish(env, id, author, manifest, source, verdict, false);
+    return json({ status: "published_unverified", verdict, published }, 200);
   }
 
-  // pass → sign + publish
-  const published = await publish(env, id, author, manifest, source, verdict);
+  // pass → sign + publish, verified
+  const published = await publish(env, id, author, manifest, source, verdict, true);
   return json({ status: "published", verdict, published }, 200);
 }
 
-async function publish(env, id, author, manifest, source, verdict) {
+async function publish(env, id, author, manifest, source, verdict, verified) {
   const key = await importPrivateKey(env.REGISTRY_SIGNING_KEY);
   const canonicalManifest = JSON.stringify(manifest);
   const { sig: sourceSig } = await signSource(key, manifest.name, manifest.version, source);
@@ -82,17 +90,25 @@ async function publish(env, id, author, manifest, source, verdict) {
 
   // Merge into the index, bump generated_at, re-sign, write atomically-ish.
   const index = (await loadIndex(env)) || { schema: 1, generated_at: "", tools: [] };
+  const generatedAt = new Date().toISOString();
   upsertVersion(index, {
     id, author, name: manifest.name, version: manifest.version,
-    artifact, zip_sha256: zipSHA, source_sig: b64(sourceSig),
-    manifest: canonicalManifest, review: { verdict: verdict.verdict, model: "@cf/moonshotai/kimi-k2.6", risk_score: verdict.risk_score },
+    artifact, zip_sha256: zipSHA, source_sig: b64(sourceSig), verified,
+    manifest: canonicalManifest,
+    review: { verdict: verdict.verdict, model: "@cf/moonshotai/kimi-k2.6", risk_score: verdict.risk_score, reviewed_at: generatedAt },
   });
-  index.generated_at = new Date().toISOString();
+  index.generated_at = generatedAt;
   const indexBytes = new TextEncoder().encode(JSON.stringify(index));
   const indexSig = await signIndex(key, indexBytes);
   await env.BUCKET.put("v1/index.json", indexBytes);
   await env.BUCKET.put("v1/index.json.sig", indexSig);
-  return { artifact, zip_sha256: zipSHA };
+
+  // catalog.json — the human-readable companion the browse web app reads. Derived from
+  // the same signed index, so the badge it shows can't drift from what the binary installs.
+  const catalog = buildCatalog(index, generatedAt);
+  await env.BUCKET.put("v1/catalog.json", new TextEncoder().encode(JSON.stringify(catalog)));
+
+  return { artifact, zip_sha256: zipSHA, verified };
 }
 
 // upsertVersion inserts the tool/version into the catalog, keeping `latest` current.
@@ -105,9 +121,33 @@ function upsertVersion(index, v) {
   tool.versions = tool.versions.filter((x) => x.version !== v.version);
   tool.versions.push({
     version: v.version, artifact: v.artifact, zip_sha256: v.zip_sha256,
-    source_sig: v.source_sig, manifest: JSON.parse(v.manifest), review: v.review,
+    source_sig: v.source_sig, manifest: JSON.parse(v.manifest), review: v.review, verified: v.verified,
   });
   tool.latest = v.version; // simplistic; a real impl would semver-compare
+}
+
+// buildCatalog flattens the signed index into the CatalogTool[] the browse app consumes
+// (one row per tool at its latest version), surfacing the plain-English capability summary.
+function buildCatalog(index, generatedAt) {
+  return index.tools.map((t) => {
+    const v = t.versions.find((x) => x.version === t.latest) || t.versions[t.versions.length - 1];
+    const m = v.manifest || {};
+    const caps = m.capabilities || {};
+    return {
+      id: t.id, name: t.name, author: t.author, version: v.version,
+      description: m.description || "", role: "tools",
+      verified: !!v.verified,
+      review: v.review ? { verdict: v.review.verdict, model: v.review.model, risk_score: v.review.risk_score, reviewed_at: v.review.reviewed_at || generatedAt } : undefined,
+      capabilities: {
+        hosts: (caps.network && caps.network.hosts) || [],
+        vault_creds: (caps.vault && caps.vault.credentials) || [],
+        storage: caps.storage && caps.storage.namespace
+          ? { namespace: caps.storage.namespace, quota_mb: caps.storage.quota_bytes ? Math.round(caps.storage.quota_bytes / (1024 * 1024)) : undefined }
+          : undefined,
+      },
+      published_at: generatedAt,
+    };
+  });
 }
 
 async function loadIndex(env) {

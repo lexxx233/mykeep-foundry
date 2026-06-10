@@ -13,16 +13,24 @@ trust root — and the AI review is defense-in-depth, never the sole control.
 POST /v1/submit {manifest, source}
   → validate + size-cap + per-author daily rate-limit (D1) + content-hash dedupe
   → review (Kimi K2.6, @cf/moonshotai/kimi-k2.6, JSON-schema verdict)
-      reject → stored, not published
-      flag   → queued in D1 `flagged` for a human decision
-      pass   → ed25519-sign (name|version|source-sha) → write tool.zip to R2
-               → merge + re-sign v1/index.json → done
-GET  /v1/index.json | /v1/index.json.sig | /v1/tools/.../tool.zip   (served from R2)
+      reject → stored, NEVER published     (malware / sandbox-escape — the only hard block)
+      flag   → published UNVERIFIED + queued in D1 `flagged` for a human  (installable, warned)
+      pass   → published VERIFIED
+      (publish = ed25519-sign (name|version|source-sha) → write tool.zip to R2
+               → merge + re-sign v1/index.json → regenerate v1/catalog.json → done)
+GET  /v1/index.json | /v1/index.json.sig | /v1/catalog.json | /v1/tools/.../tool.zip   (R2)
 ```
 
-Defense-in-depth (no single gate): AI review at submission **+** registry signing **+** the
-runtime WASM sandbox **+** capability grants **+** the human's install-time consent. A
-`pass` means "we found nothing", not "safe to run unsupervised".
+**Open submission.** Anyone can publish. The registry signs *every* published tool
+(integrity + provenance); `verified` is separate metadata recording whether AI review
+passed. Rejected submissions (malware) are never published; flagged ones publish as
+**unverified** and are installable with a warning. `verified` only changes the badge — never
+installability. The runtime triad (sandbox + grants + human consent) is the safety floor for
+every published tool; a `pass` means "we found nothing", not "safe to run unsupervised".
+
+`v1/catalog.json` is the human-readable companion the browse web app
+(`lexxx233/mykeep-marketplace`) reads — derived from the same signed index, so the badge it
+shows can't drift from what the binary installs.
 
 ## One-time setup
 
