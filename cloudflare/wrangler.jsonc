@@ -1,5 +1,5 @@
 {
-  // Foundry marketplace Worker: submission pipeline (validate → Kimi K2.6 review → sign →
+  // Foundry marketplace Worker: submission pipeline (validate → AI exploit review → sign →
   // publish) + signed-catalog/artifact serving. Deploy with: npx wrangler deploy
   "name": "foundry-marketplace",
   "main": "src/worker.js",
@@ -13,5 +13,7 @@
   ],
   // The ed25519 signing seed is a SECRET, never in this file:
   //   wrangler secret put REGISTRY_SIGNING_KEY   (paste base64 of the 32-byte seed)
+  // The review model id is kept out of public source — set it at deploy time, not here:
+  //   wrangler secret put REVIEW_MODEL           (the Workers-AI model id to review with)
   "observability": { "enabled": true }
 }

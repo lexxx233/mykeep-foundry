@@ -1,9 +1,9 @@
 # Foundry marketplace (Cloudflare)
 
 The off-binary half of Foundry's open marketplace: a Cloudflare Worker that takes
-third-party tool submissions, reviews them with **Kimi K2.6** on Workers AI, signs the
-ones that pass with the registry's ed25519 key, and publishes them to a signed catalog in
-R2. The Foundry binary installs from that catalog and verifies every signature against a
+third-party tool submissions, runs them through an **AI exploit review** (Workers AI, model
+chosen at deploy time — see below), signs them with the registry's ed25519 key, and publishes
+them to a signed catalog in R2. The Foundry binary installs from that catalog and verifies every signature against a
 **pinned** public key (`internal/registry`), so this service is a *convenience*, not a
 trust root — and the AI review is defense-in-depth, never the sole control.
 
@@ -12,7 +12,7 @@ trust root — and the AI review is defense-in-depth, never the sole control.
 ```
 POST /v1/submit {manifest, source}
   → validate + size-cap + per-author daily rate-limit (D1) + content-hash dedupe
-  → review (Kimi K2.6, @cf/moonshotai/kimi-k2.6, JSON-schema verdict)
+  → AI exploit review (Workers AI, REVIEW_MODEL, JSON-schema verdict)
       reject → stored, NEVER published     (malware / sandbox-escape — the only hard block)
       flag   → published UNVERIFIED + queued in D1 `flagged` for a human  (installable, warned)
       pass   → published VERIFIED
@@ -49,7 +49,12 @@ wrangler d1 execute foundry-marketplace --file schema.sql
 #    pin into the binary (internal/registry registryPubKeys), and store the SEED as a secret:
 wrangler secret put REGISTRY_SIGNING_KEY        # paste base64 of the 32-byte seed
 
-# 4. Deploy
+# 4. The review model id — kept out of public source so it isn't handed to attackers.
+#    Set it as a secret (any Workers-AI model id); review.js falls back to a generic
+#    default if unset.
+wrangler secret put REVIEW_MODEL                # e.g. a Workers-AI model id
+
+# 5. Deploy
 wrangler deploy
 ```
 

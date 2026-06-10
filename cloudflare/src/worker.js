@@ -95,7 +95,8 @@ async function publish(env, id, author, manifest, source, verdict, verified) {
     id, author, name: manifest.name, version: manifest.version,
     artifact, zip_sha256: zipSHA, source_sig: b64(sourceSig), verified,
     manifest: canonicalManifest,
-    review: { verdict: verdict.verdict, model: "@cf/moonshotai/kimi-k2.6", risk_score: verdict.risk_score, reviewed_at: generatedAt },
+    // The reviewing model is intentionally omitted from public output — see review.js.
+    review: { verdict: verdict.verdict, risk_score: verdict.risk_score, reviewed_at: generatedAt },
   });
   index.generated_at = generatedAt;
   const indexBytes = new TextEncoder().encode(JSON.stringify(index));
@@ -137,7 +138,7 @@ function buildCatalog(index, generatedAt) {
       id: t.id, name: t.name, author: t.author, version: v.version,
       description: m.description || "", role: "tools",
       verified: !!v.verified,
-      review: v.review ? { verdict: v.review.verdict, model: v.review.model, risk_score: v.review.risk_score, reviewed_at: v.review.reviewed_at || generatedAt } : undefined,
+      review: v.review ? { verdict: v.review.verdict, risk_score: v.review.risk_score, reviewed_at: v.review.reviewed_at || generatedAt } : undefined,
       capabilities: {
         hosts: (caps.network && caps.network.hosts) || [],
         vault_creds: (caps.vault && caps.vault.credentials) || [],

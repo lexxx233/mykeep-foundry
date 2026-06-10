@@ -1,10 +1,15 @@
-// review.js — the AI exploit-review gate. A submitted tool's source + manifest are read
-// by Kimi K2.6 (Cloudflare Workers AI) under a constrained JSON schema, producing a
-// gating verdict. This is defense-in-DEPTH, never the sole control: the runtime sandbox,
-// the capability grant, and the human's install-time consent are the actual floor. A
-// `pass` is "we found nothing", not "safe to run unsupervised".
+// review.js — the AI exploit-review gate. A submitted tool's source + manifest are read by
+// an LLM under a constrained JSON schema, producing a gating verdict. This is
+// defense-in-DEPTH, never the sole control: the runtime sandbox, the capability grant, and
+// the human's install-time consent are the actual floor. A `pass` is "we found nothing", not
+// "safe to run unsupervised".
+//
+// The reviewing model is supplied at deploy time via the REVIEW_MODEL binding, NOT hardcoded
+// here — naming it publicly would only help an attacker tailor a bypass against it.
 
-export const MODEL = "@cf/moonshotai/kimi-k2.6";
+// Fallback only — set REVIEW_MODEL as a Worker variable in production so the model name never
+// lives in the public source.
+const DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct";
 
 export const VERDICT_SCHEMA = {
   type: "object",
@@ -77,10 +82,11 @@ export function decide(verdict) {
   return "pass";
 }
 
-// review runs Kimi K2.6 over the submission and returns the (schema-valid) verdict plus the
-// policy decision. The model's own `verdict` field is advisory; `decision` is authoritative.
+// review runs the configured LLM over the submission and returns the (schema-valid) verdict
+// plus the policy decision. The model's own `verdict` field is advisory; `decision` is
+// authoritative. The model id comes from the REVIEW_MODEL Worker variable (see DEFAULT_MODEL).
 export async function review(env, manifest, source) {
-  const out = await env.AI.run(MODEL, {
+  const out = await env.AI.run(env.REVIEW_MODEL || DEFAULT_MODEL, {
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: JSON.stringify({ manifest, source }) },

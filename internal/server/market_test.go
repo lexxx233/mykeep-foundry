@@ -33,9 +33,9 @@ func fakeRegistry(t *testing.T, priv ed25519.PrivateKey, verified bool) *httptes
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(zip)
-	review := &registry.Review{Verdict: "pass", Model: "@cf/moonshotai/kimi-k2.6", RiskScore: 4}
+	review := &registry.Review{Verdict: "pass", RiskScore: 4}
 	if !verified {
-		review = &registry.Review{Verdict: "flag", Model: "@cf/moonshotai/kimi-k2.6", RiskScore: 45}
+		review = &registry.Review{Verdict: "flag", RiskScore: 45}
 	}
 	idx := &registry.Index{
 		Schema: 1, GeneratedAt: "2026-06-09T00:00:00Z",

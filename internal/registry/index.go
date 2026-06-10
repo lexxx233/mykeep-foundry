@@ -45,9 +45,10 @@ type IndexVersion struct {
 }
 
 // Review is the advisory AI-review verdict surfaced in the catalog (never a trust root).
+// The reviewing model is deliberately NOT carried here — naming it publicly would only help
+// an attacker tailor a bypass; the verdict + score are all a consumer needs.
 type Review struct {
 	Verdict   string `json:"verdict"` // pass | flag
-	Model     string `json:"model"`
 	RiskScore int    `json:"risk_score"`
 }
 

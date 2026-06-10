@@ -65,7 +65,7 @@ each call enforced in Go against the tool's grant.
 ## The marketplace
 
 Anyone can publish. The registry signs **every** published tool (integrity + provenance); a tool
-that clears an AI exploit review (Kimi K2.6 on Cloudflare Workers AI) earns a **Verified** badge.
+that clears an **AI exploit review** earns a **Verified** badge.
 
 - `reject` → never published (the only hard block: malware / sandbox-escape)
 - `flag` → published **unverified**, installable with a warning
